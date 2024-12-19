@@ -31,19 +31,17 @@ def main():
   cv2.destroyAllWindows()
 
 def capture_and_save_frames(cap, frame_number, frame_counter, background_region=0.01, model = YOLO("yolov8n-seg.pt")):
-    def capture_and_save_frames(cap, frame_number, frame_counter, background_region=0.01, model=YOLO("yolov8n-seg.pt")):
-      """
-      Captures frames from a video capture object, processes them using a segmentation model, and saves frames 
-      where the background region difference exceeds a specified threshold.
-      Args:
-        cap (cv2.VideoCapture): Video capture object.
-        frame_number (int): The interval at which frames are processed (e.g., every 60th frame).
-        frame_counter (int): Counter to keep track of the number of frames processed.
-        background_region (float, optional): The threshold for the background region difference ratio to save the frame. Defaults to 0.01.
-        model (YOLO, optional): The YOLO segmentation model to use for processing frames. Defaults to YOLO("yolov8n-seg.pt"). This can be passed in main using T2_BACKGROUND_REGION in config.yaml.
+    """
+    Captures frames from a video capture object, processes them using a segmentation model, and saves frames 
+    where the background region difference exceeds a specified threshold.
+    Args:
+      cap (cv2.VideoCapture): Video capture object.
+      frame_number (int): The interval at which frames are processed (e.g., every 60th frame).
+      frame_counter (int): Counter to keep track of the number of frames processed.
+      background_region (float, optional): The threshold for the background region difference ratio to save the frame. Defaults to 0.01.        model (YOLO, optional): The YOLO segmentation model to use for processing frames. Defaults to YOLO("yolov8n-seg.pt"). This can be passed in main using T2_BACKGROUND_REGION in config.yaml.
       Returns:
-        None
-      """
+      None
+    """
     while cap.isOpened() and frame_counter < 1000:
       success, frame = cap.read()
       #cv2.imshow('webcam frame', frame)
