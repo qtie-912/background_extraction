@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 import os
-
+import matplotlib.pyplot as plt
 
 # Set global environment variables for files in sample_data
 SAMPLE_BACKGROUND_1 = os.path.join('sample_data', 'sample_background1.mp4')
@@ -36,15 +36,39 @@ with open(CONFIG_FILE, 'r') as file:
 
 
 # DEBUGGING GETTING VARIABLE FROM FILES - COMMENT AFTER USE
-print(yaml_config["T1_FPS"])
+# print(yaml_config["T1_FPS"])
 
-
+def video_inference(media_source, model, yaml_config):
+    """Performs video inference using the given media source and model."""
+    cap = cv2.VideoCapture(media_source)
+    frame_counter = 0
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_number = fps / yaml_config["T1_FPS"]
+    print("Video fps: ", fps)
+    print("Amount of frames needed to take 1 frame: ", frame_number)
+    while cap.isOpened():
+        success, frame = cap.read()
+        if success:
+            frame_counter += 1
+            if frame_counter % frame_number == 0:
+                results = model(frame)
+                if results and results[0].masks:
+                    segmentation_mask = results[0].masks.data[0].cpu().numpy()
+                    bg_mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
+                    resized_segmentation_mask = cv2.resize(segmentation_mask.astype(np.uint8), (frame.shape[1], frame.shape[0]))
+                    new_mask = np.logical_or(bg_mask, np.logical_not(resized_segmentation_mask))
+                    new_mask = new_mask.astype(np.uint8)
+                    diff_ratio = np.sum(np.abs(new_mask - bg_mask)) / (frame.shape[0] * frame.shape[1])
+                    if diff_ratio > yaml_config["T2_BACKGROUND_REGION"]:
+                        cv2.imwrite(os.path.join(DATA_DIRECTORY, f"frame_{cap.get(cv2.CAP_PROP_POS_FRAMES)}.jpg"), frame)
+        else:
+            break
+    cv2.imwrite("final_mask.jpg", new_mask)
+    cap.release()
+    
+    
 """SELECT WHAT VIDEO TO USE FOR BACKGROUND EXTRACTION HERE""" 
 cap = cv2.VideoCapture(SAMPLE_BACKGROUND_1) # THAY CAM VÀO ĐÂY 
-
-# Check if the video is opened successfully
-if not cap.isOpened():
-    print("Error opening video stream or file")
 
 # Initialize frame counter
 frame_counter = 0
@@ -56,39 +80,43 @@ frame_number = fps / yaml_config["T1_FPS"]
 print("Video fps: ", fps)
 print("Amount of frames needed to take 1 frame: ", frame_number)
 
-while cap.isOpened():
-    success, frame = cap.read()
-    if success:
+def process_frames_for_segmentation(model, yaml_config, cap, frame_counter, frame_number):
+    while cap.isOpened():
+        success, frame = cap.read()
+        if success:
         # Increment frame counter
-        frame_counter += 1
+            frame_counter += 1
 
         # Process every 60th frame
-        if frame_counter % frame_number == 0:
+            if frame_counter % frame_number == 0:
             # Run segmentation model through the frame
-            results = model(frame)
+                results = model(frame)
 
             # Get segmentation mask
-            if results and results[0].masks:
-                segmentation_mask = results[0].masks.data[0].cpu().numpy()
+                if results and results[0].masks:
+                    segmentation_mask = results[0].masks.data[0].cpu().numpy()
 
                 # Create bg_mask with the same size as the frame
-                bg_mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
+                    bg_mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
 
                 # Resize segmentation_mask to match frame's shape
-                resized_segmentation_mask = cv2.resize(segmentation_mask.astype(np.uint8), (frame.shape[1], frame.shape[0]))
+                    resized_segmentation_mask = cv2.resize(segmentation_mask.astype(np.uint8), (frame.shape[1], frame.shape[0]))
 
                 # Create new mask
-                new_mask = np.logical_or(bg_mask, np.logical_not(resized_segmentation_mask))
-                new_mask = new_mask.astype(np.uint8)
+                    new_mask = np.logical_or(bg_mask, np.logical_not(resized_segmentation_mask))
+                    new_mask = new_mask.astype(np.uint8)
 
                 # Calculate difference
-                diff_ratio = np.sum(np.abs(new_mask - bg_mask)) / (frame.shape[0] * frame.shape[1])
+                    diff_ratio = np.sum(np.abs(new_mask - bg_mask)) / (frame.shape[0] * frame.shape[1])
 
                 # Save frame as an image if the difference ratio is greater than 0.01
-                if diff_ratio > yaml_config["T2_BACKGROUND_REGION"]:
-                    cv2.imwrite(os.path.join('data', f"frame_{cap.get(cv2.CAP_PROP_POS_FRAMES)}.jpg"), frame)
-    else:
-        break
+                    if diff_ratio > yaml_config["T2_BACKGROUND_REGION"]:
+                        cv2.imwrite(os.path.join('data', f"frame_{cap.get(cv2.CAP_PROP_POS_FRAMES)}.jpg"), frame)
+        else:
+            break
+    return new_mask
+
+new_mask = process_frames_for_segmentation(model, yaml_config, cap, frame_counter, frame_number)
 
 # Save the final mask created as a file
 cv2.imwrite("final_mask.jpg", new_mask)
@@ -98,7 +126,7 @@ cap.release()
 
 import os
 
-image_count = len([name for name in os.listdir('/content/data') if os.path.isfile(os.path.join('/content/data', name))])
+image_count = len([name for name in os.listdir(DATA_DIRECTORY) if os.path.isfile(os.path.join(DATA_DIRECTORY, name))])
 print(f"Number of images in 'data' folder: {image_count}")
 
 """# Processing"""
@@ -108,10 +136,10 @@ print(f"Number of images in 'data' folder: {image_count}")
 import cv2
 import os
 
-image_files = [f for f in os.listdir('/content/data') if f.endswith('.jpg')]
+image_files = [f for f in os.listdir(DATA_DIRECTORY) if f.endswith('.jpg')]
 
 if image_files:
-  first_image_path = os.path.join('/content/data', image_files[0])
+  first_image_path = os.path.join(DATA_DIRECTORY, image_files[0])
   img = cv2.imread(first_image_path)
   if img is not None:
     print(img.shape)
@@ -139,14 +167,14 @@ def plot_images_in_directory(directory):
     except Exception as e:
       print(f"Error loading or displaying image {image_file}: {e}")
 
-plot_images_in_directory('/content/data')
+plot_images_in_directory(DATA_DIRECTORY)
 
 # cv2 read images in data
 
 import cv2
 import os
 
-def read_images_in_directory(directory):
+def median_background_inference(directory):
   """Reads all images in a given directory using OpenCV."""
   image_files = [f for f in os.listdir(directory) if f.endswith('.jpg')]
   images = []
@@ -157,10 +185,15 @@ def read_images_in_directory(directory):
       images.append(img)
     else:
       print(f"Could not read image: {image_path}")
-  return images
+  fa_background = np.median(images, axis=0).astype(np.uint8)
+  cv2.imwrite('result/background_median.png', fa_background)
+
+  plt.imshow(cv2.cvtColor(fa_background, cv2.COLOR_BGR2RGB))
+  plt.show()
+
 
 # Example usage:
-images = read_images_in_directory('/content/data')
+images = read_images_in_directory(DATA_DIRECTORY)
 print(f"Read {len(images)} images from the directory.")
 
 # Commented out IPython magic to ensure Python compatibility.
@@ -189,12 +222,46 @@ def get_video_length(video_path):
 
   cap.release()
   return video_length
+  
+  
+def main():
+  # Load configuration
+  with open(CONFIG_FILE, 'r') as file:
+    yaml_config = yaml.safe_load(file)
 
-# Loop through all files in the content directory
-for filename in os.listdir('/content'):
-  if filename.endswith(('.mp4', '.avi', '.mov')):  # Add other video extensions if needed
-    video_path = os.path.join('/content', filename)
-    video_length = get_video_length(video_path)
-    print(f"Video: {filename}, Length: {video_length:.2f} seconds")
+  # cv2 read from webcam
+  cap = cv2.VideoCapture(0)
+  fps = cap.get(cv2.CAP_PROP_FPS)  # get fps from cap
+  frame_number = fps / yaml_config["T1_FPS"]
+  frame_counter = 0
+
+  while cap.isOpened():
+    success, frame = cap.read()
+    if success:
+      frame_counter += 1
+      if frame_counter % frame_number == 0:
+        cv2.imwrite(os.path.join(DATA_DIRECTORY, f"webcam_frame_{cap.get(cv2.CAP_PROP_POS_FRAMES)}.jpg"), frame)
+      if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+    else:
+      break
+
+  cap.release()
+  cv2.destroyAllWindows()
+      
+  def read_images_in_directory(directory):
+    """Reads all images in a given directory using OpenCV."""
+    image_files = [f for f in os.listdir(directory) if f.endswith('.jpg')]
+    images = []
+    for i in range(min(20,len(image_files))):
+      image_path = os.path.join(directory, image_files[i])
+      img = cv2.imread(image_path)
+      if img is not None:
+        images.append(img)
+      else:
+        print(f"Could not read image: {image_path}")
+    return images    
     
 
+if __name__ == "__main__":
+    main()
